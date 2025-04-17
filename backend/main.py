@@ -1,50 +1,68 @@
-from flask import Flask, request, jsonify
 from serpapi import GoogleSearch
 import json
 import re
 
-app = Flask(__name__)
-
-@app.route('/search', methods=['POST'])
-def search_products():
-    data = request.get_json()  # Get data from the frontend
-    query = data['query']
-    min_price = data['min_price']
-    max_price = data['max_price']
-
-    # SerpAPI call to fetch results
+def search_prod(query):
     params = {
-        "engine": "google_shopping",
-        "q": query,
-        "api_key": "ccc295b07cb8b5d0d6493c8a5cb9813e9ca93c06771722a4b751bf2d7a199fc0",
-        "tbm": "shop"
+      "engine": "google_shopping",
+      "q": query,
+      "api_key": "4e9f647b16dfb41ea8f762ea32fcdd25d104382d9e1fed6b7c9bcbc06e770570",
+      "tbm": "shop",
+      "gl":"in"
     }
-
     search = GoogleSearch(params)
-    results = search.get_dict()
-    shopping_results = results["shopping_results"]
+    rslt = search.get_dict()
+    return rslt
 
-    # Filter products by price range
+
+def send_query(query):
+    print("received query for "+query)
+    results = search_prod(query)
+    if "shopping_results" in results:
+        return results["shopping_results"]
+    else:
+        print(f"No results found for query: {query}")
+        return []  # Return an empty list if no results found
+
+
+# Extract and filter the title, price, product link, and seller name for each product within the price range
+def display_result(results,max_price):
+    print(f"max_price received as : {max_price}")
     filtered_products = []
-    for product in shopping_results:
+    for product in results:
+        title = product.get("title")
         price = product.get("price")
-        price_match = re.search(r'[\d,.]+', price)
-        price_value = float(price_match.group().replace(',', '')) if price_match else 0.0
+        link = product.get("product_link")
+        seller = product.get("source")
 
-        if min_price <= price_value <= max_price:
+        # Extract numeric value from price string
+        if isinstance(price, str) and price:  # Check if price is a valid string
+            price_match = re.search(r'[\d,.]+', price) if '₹' in price else None
+            price_value = float(price_match.group().replace(',', '').replace('/mo', '').strip()) if price_match else 0.0
+        else:
+            price_value = 0.0  # Default value if price is not valid
+
+        if price_value <= max_price:
             filtered_products.append({
-                "title": product.get("title"),
+                "title": title,
                 "price": price,
-                "link": product.get("link"),
-                "image": product.get("thumbnail")
+                "link": link,
+                "seller": seller
             })
+    return filtered_products
 
-    # Save results to JSON
+def save_results_to_json(filtered_products):
+    # Save the filtered results to a JSON file, overwriting existing content
     with open('api_results.json', 'w') as json_file:
         json.dump(filtered_products, json_file, indent=4)
 
-    # Return results to frontend
-    return jsonify(filtered_products)
 
-if __name__ == '__main__':
-    app.run(debug=True)
+def main():
+    query = {"iphone 15":70000.00 , "apple watch series 9":40000.00}
+    for p in query:
+        results = send_query(p)
+        filtered_products = display_result(results,query[p])
+        print(filtered_products[0])
+        save_results_to_json(filtered_products)
+
+main()
